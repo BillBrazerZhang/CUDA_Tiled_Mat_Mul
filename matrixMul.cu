@@ -27,14 +27,59 @@ using namespace tmm;
 
 //------------------------------------------------------------Host Functions-------------------------------------------------
 //----------------------------------------------------------
-tmm_problem load_R(half *gpuR, tmm_node *R, int rowTile, int colTile, tmm_model *model)  //load matrix R
+tmm_problem read_problem(string path)  //load matrix R
 {
 	//A simple function that reads the sparse matrix in COO manner.
-	printf("load and update output R\n");
-	for (int i = 0; i < model->gridSizeM; i++)
-		for (int j = 0; j < model->gridSizeN; j++){
-			R[]rowTile*model->gridSizeM
-	
+	printf("read_problem:%s\n", path.c_str());
+	tmm_problem prob;
+	prob.m = 1;
+	prob.n = 1;
+	prob.nnz = 0;
+	prob.R = nullptr;
+
+
+	if (path.empty())
+		return prob;
+
+	FILE*fptr = fopen(path.c_str(), "rb");
+	if (fptr == NULL) {
+		printf("error file open %s\n", path.c_str());
+		return prob;
+	}
+
+
+	unsigned int tmp;
+	fread(&prob.m, sizeof(unsigned int), 1, fptr);
+	fread(&prob.n, sizeof(unsigned int), 1, fptr);
+	fread(&tmp, sizeof(unsigned int), 1, fptr);
+	prob.nnz = tmp;
+
+	tmm_node *R = new tmm_node[prob.nnz];
+
+
+	long long idx = 0;
+	while (true)
+	{
+		int flag = 0;
+		int u, v;
+		float r;
+
+		flag += fread(&u, sizeof(int), 1, fptr);
+		flag += fread(&v, sizeof(int), 1, fptr);
+		flag += fread(&r, sizeof(float), 1, fptr);
+
+		if (flag != 3)break;
+
+		R[idx].u = u;
+		R[idx].v = v;
+		R[idx].r = r;
+		idx++;
+	}
+	prob.R = R;
+
+	fclose(fptr);
+	printf("m:%lld, n:%lld, nnz:%lld\n", prob.m, prob.n, prob.nnz);
+	return prob;
 }
 //-----------------------------------------
 tmm_model* tmm_load_model(char const *path)  // load feature matrix P, Q
@@ -119,38 +164,19 @@ void tmm_destroy_model(tmm_model **model)
 	*model = nullptr;
 }
 //-----------------------------------------------------------------
-tmm_float tmm_predict(tmm_model const *model, tmm_int u, tmm_int v)
+tmm_float look_up_Rp(float **Rp, tmm_int u, tmm_int v, tmm_model *model)
 {
-	using half_float::half;
+	int partx = u/model->gridSizeM;
+	int gridm = u%model->gridSizeM;
+	int party = v/model->gridSizeN;
+	int gridn = v%model->gridSizeN;
+	int partn = 2 * partx + party;
+	int id = gridm * model->gridSizeN + gridn;
+	return Rp[partn][id];
 
-	if (u < 0 || u >= model->m || v < 0 || v >= model->n)
-		return model->b;
-
-	half *ph = (half*)model->P + ((tmm_long)u)*model->k;
-	half *qh = (half*)model->Q + ((tmm_long)v)*model->k;
-
-	float p, q;
-	tmm_float z = 0.0f;
-	for (int w = 0; w < model->k; w++) {
-		p = (float)(*ph);
-		q = (float)(*qh);
-		z += p*q;
-		ph++;
-		qh++;
-	}
-
-	if (isnan(z))
-		z = model->b;
-
-	if (model->fun == P_L2_tmmC &&
-		model->fun == P_L1_tmmC &&
-		model->fun == P_LR_tmmC)
-		z = z > 0.0f ? 1.0f : -1.0f;
-
-	return z;
 }
 //-------------------------------------------------------
-tmm_double calc_rmse(tmm_problem *prob, tmm_model *model)
+tmm_double calc_rmse(tmm_problem *prob, tmm_model *model, float **Rp)
 {
 	printf("calculating rmse ...\n");
 	if (prob->nnz == 0)
@@ -160,7 +186,7 @@ tmm_double calc_rmse(tmm_problem *prob, tmm_model *model)
 	for (tmm_long i = 0; i < prob->nnz; i++)
 	{
 		tmm_node &N = prob->R[i];
-		tmm_float e = N.r - tmm_predict(model, N.u, N.v);
+		tmm_float e = N.r - look_up_Rp(Rp, N.u, N.v, model);
 
 		loss += e*e;
 

@@ -1,9 +1,9 @@
 //------------------------------------------------------------Kernel Functions-----------------------------------------------
-void tmm_update_k128(Parameter para, tmm_model *model, half *gpuR)
-{
+void tmm_update_k128(Parameter para, tmm_model *model, half *gpuR, short *R, float *Rp)
+{   using half_float::half;
     printf("calling tmm_update_k128()...\n");
 
-    //malloc from CPU to GMEM
+    //malloc
     cudaMalloc(&model->gpuHalfp, sizeof(half)*model->gridSizeM*model->k);
     cudaMalloc(&model->gpuHalfq, sizeof(half)*model->gridSizeN*model->k);
 	cudaMalloc(&gpuR, sizeof(half)*model->gridSizeM*model->gridSizeN);
@@ -17,7 +17,8 @@ void tmm_update_k128(Parameter para, tmm_model *model, half *gpuR)
 			short *p_tmp = model->halfp + model->gridSizeM*model->k*model->rowTile;
             short *q_tmp = model->halfq + model->gridSizeN*model->k*model->colTile;
 			assert(p_tmp);
-			assert(q_tmp);
+			assert(q_tmp); 
+			// Copy from CPU to GMEM
 			cudaMemcpy(&model->gpuHalfp, p_tmp, sizeof(half)*model->gridSizeM*model->k, cudaMemcpyHostToDevice);
             cudaMemcpy(&model->gpuHalfq, q_tmp, sizeof(half)*model->gridSizeN*model->k, cudaMemcpyHostToDevice);
 			
@@ -25,15 +26,30 @@ void tmm_update_k128(Parameter para, tmm_model *model, half *gpuR)
             dim3 block(32, 32);
 			dim3 grid((model->gridSizeN+block.x-1)/block.x, (model->gridSizeM+block.y-1)/block.y);
 			tmm_kernel<<<grid,block>>>(para, model->gridSizeM, model->gridSizeN, model->k, gpuHalfp, gpuHalfq, gpuR);
+			// Copy from GMEM to CPU
+			short *R;
 			cudaMemcpy(R, gpuR, sizeof(half)*model->gridSizeM*model->gridSizeN, cudaMemcpyDeviceToHost);
 			checkCUDAError("Unable to retrieve result from device");
-			
+			printf("load a R partition and update\n");
+	        long long idx = 0;
+	        int partNum = 2 * rowTile + colTile;
+	        for (int i = 0; i < model->gridSizeM; i++){
+		        for (int j = 0; j < model->gridSizeN; j++){
+			        Rp[partNum][idx] = (float)(R[idx]);
+			        idx++;
+		        }
+            }
 			cudaFree(gpuHalfp);
 			cudaFree(gpuHalfq);
 			cudaFree(gpuR);
 		}
 	}
 
+}
+
+void update_Rp(half *R, float **Rp, int rowTile, int colTile, tmm_model *model)  //load matrix R
+{
+	
 }
 
 __global__ void tmm_kernel(Parameter para, tmm_int a_seg, tmm_int b_seg, tmm_int k, half *gpuHalfp, half *gpuHalfq, half *gpuR)

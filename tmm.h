@@ -49,6 +49,7 @@ namespace tmm
 		tmm_int u;
 		tmm_int v;
 		tmm_float r;
+		tmm_float rp;
 	};
 
 	struct tmm_model
