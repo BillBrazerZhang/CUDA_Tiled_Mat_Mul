@@ -54,28 +54,18 @@ namespace tmm
 
 	struct tmm_model
 	{
-		tmm_int fun;
 		tmm_int m;
 		tmm_int n;
 		tmm_int k;
 		tmm_float b;
-		float *floatp;
-        float *floatq;
+		tmm_int gridSizeM;
+		tmm_int gridSizeN;
         short *halfp;
         short *halfq;
 		short *P;
 		short *Q;
-		long long u_seg, v_seg;
         half *gpuHalfp;
         half *gpuHalfq;
-        int cur_u_id;
-        int cur_v_id;
-
-        //half *gpuHalfPptrs[2];// allocate P for GPU
-        //half *gpuHalfQptrs[2];// allocate Q for GPU
-
-        //int cur_global_x_id[2];//-1
-        //int cur_global_y_id[2];//-1
 	};
 
 	struct tmm_problem
@@ -83,18 +73,8 @@ namespace tmm
 		tmm_int m;
 		tmm_int n;
 		tmm_long nnz;
-		struct tmm_node *R;
-		struct tmm_node **R2D;
-		long long u_seg, v_seg;
-        long long *gridSize;
-        long long maxGridSize;	
-        struct tmm_node *gpuR;
-        int cur_u_id;
-        int cur_v_id;
-
-        //struct tmm_node *gpuRptrs[2];
-        //int cur_global_x_id[2];
-        //int cur_global_y_id[2];		
+		struct tmm_node *R;	
+		half *gpuR;
 	};
 
 
